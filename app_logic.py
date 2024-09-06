@@ -1,15 +1,9 @@
-try:
-    from textblob import TextBlob
-except ImportError:
-    print("Please install the 'textblob' library.")
-try:
-    import spacy
-except ImportError:
-    print("Please install the 'spacy' library.")
-import webbrowser
-from models import db, Interaction, Resource, Appointment
 from datetime import datetime
 import time
+from textblob import TextBlob
+import spacy
+import webbrowser
+from models import db, Interaction, Log, Appointment 
 
 nlp = spacy.load("en_core_web_sm")
 
@@ -42,21 +36,27 @@ def extract_entities(user_input):
 
 def check_in(user_id, message):
     sentiment = analyze_sentiment(message)
-    
-    interaction = Interaction(user_id=user_id, message=message, sentiment=sentiment, timestamp=datetime.utcnow())
+    response = check_in_initial(message) 
+
+    interaction = Interaction(
+        user_id=user_id,
+        user_input=message,
+        ai_response=response,
+        sentiment=sentiment,
+        timestamp=datetime.utcnow()
+    )
     db.session.add(interaction)
     db.session.commit()
-    
-    if sentiment < -0.5:
-        response = "I'm really sorry you're feeling this way. Please reach out to a counselor or call a crisis hotline."
-    elif sentiment < 0:
-        response = "I'm sorry you're feeling down. Here are some resources that might help."
-    elif sentiment == 0:
-        response = "Thank you for sharing. How can I assist you today?"
-    else:
-        response = "I'm glad you're feeling good! How can I assist you today?"
-    
+
+
+    log_event(user_id, f"User interaction saved. Sentiment: {sentiment}")
+
     return response
+
+def log_event(user_id, event, log_level='INFO'):
+    log = Log(user_id=user_id, event=event, log_level=log_level, timestamp=datetime.utcnow())
+    db.session.add(log)
+    db.session.commit()
 
 def get_resources():
     resources = [
@@ -76,6 +76,7 @@ def schedule_appointment(user_id, counselor_name, appointment_time):
     appointment = Appointment(user_id=user_id, counselor_name=counselor_name, appointment_time=appointment_time)
     db.session.add(appointment)
     db.session.commit()
+    log_event(user_id, f"Appointment scheduled with {counselor_name} at {appointment_time}")
     return "Appointment scheduled successfully!"
 
 def safe_space(user_id):
