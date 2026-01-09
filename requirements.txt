@@ -3,3 +3,4 @@ Flask-SQLAlchemy
 textblob
 spacy
 pymysql
+python-dotenv

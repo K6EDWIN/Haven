@@ -81,6 +81,7 @@ def schedule_appointment(user_id, counselor_name, appointment_time):
 
 def safe_space(user_id):
     print(f"Hello, {user_id}. Let's talk in a safe space.")
+    print("NOTE: Nothing you say here is saved to the database. This is just between us.")
     time.sleep(1)
     
     while True:
