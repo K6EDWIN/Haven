@@ -4,3 +4,4 @@ textblob
 spacy
 pymysql
 python-dotenv
+gunicorn

@@ -1,10 +1,6 @@
 from flask import Flask, request, jsonify, render_template_string
 import os
-import sys
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from app_logic import analyze_sentiment, check_in_initial, get_resources
+from app_logic import analyze_sentiment, extract_entities, get_resources
 from models import db, Interaction
 
 app = Flask(__name__)
@@ -14,10 +10,12 @@ db_pass = os.getenv('DB_PASS', '')
 db_host = os.getenv('DB_HOST', 'localhost')
 db_name = os.getenv('DB_NAME', 'rosa')
 
-# Fallback to in-memory SQLite if no DB connection is present (Safe Space mode)
-app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://{db_user}:{db_pass}@{db_host}/{db_name}' if db_host != 'localhost' else 'sqlite:///:memory:'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+if db_host != 'localhost':
+    app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://{db_user}:{db_pass}@{db_host}/{db_name}'
+else:
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:' # Fallback for local testing
 
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
 
 HTML_TEMPLATE = """
@@ -34,13 +32,11 @@ HTML_TEMPLATE = """
         input { width: 75%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
         button { padding: 10px 15px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; }
         button:hover { background: #218838; }
-        .controls { margin-top: 10px; }
-        .mode-label { font-weight: bold; color: #555; }
     </style>
 </head>
 <body>
     <h1>Haven 🌿</h1>
-    <p class="mode-label">Current Mode: Safe Space (No Data Saved)</p>
+    <p>Safe Space Mode (Powered by spaCy)</p>
     <div class="chat-box" id="chat-box">
         <div class="message bot">Hello! I am Haven. I'm here to listen. How are you feeling today?</div>
     </div>
@@ -58,14 +54,21 @@ HTML_TEMPLATE = """
             addMessage(message, 'user');
             inputField.value = '';
 
-            // Send to Backend
-            const response = await fetch('/api/chat', {
+            const response = await fetch('/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message: message })
             });
             const data = await response.json();
-            addMessage(data.response, 'bot');
+            
+            // Show entities if found (Debugging/Feature)
+            let botText = data.response;
+            if (data.entities && data.entities.length > 0) {
+                const entityNames = data.entities.map(e => e[0]).join(", ");
+                botText += ` (I noticed these topics: ${entityNames})`;
+            }
+            
+            addMessage(botText, 'bot');
         }
 
         function addMessage(text, sender) {
@@ -89,13 +92,14 @@ HTML_TEMPLATE = """
 def home():
     return render_template_string(HTML_TEMPLATE)
 
-@app.route('/api/chat', methods=['POST'])
+@app.route('/chat', methods=['POST'])
 def chat():
     data = request.json
     user_message = data.get('message', '')
     
-    
+    # Analyze Sentiment
     sentiment = analyze_sentiment(user_message)
+    entities = extract_entities(user_message)
     if sentiment < -0.5:
         bot_response = "I'm really sorry you're feeling this way. It might help to talk to a professional."
     elif sentiment < 0:
@@ -105,6 +109,7 @@ def chat():
     else:
         bot_response = "It's great to hear you're feeling positive! How can I support you further?"
 
-    return jsonify({"response": bot_response, "sentiment": sentiment})
+    return jsonify({"response": bot_response, "sentiment": sentiment, "entities": entities})
 
-app.debug = True
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
