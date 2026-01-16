@@ -6,18 +6,25 @@ from models import db, Interaction
 
 app = Flask(__name__)
 
-db_user = os.getenv('DB_USER', 'root')
-db_pass = os.getenv('DB_PASS', '')
-db_host = os.getenv('DB_HOST', 'localhost')
-db_name = os.getenv('DB_NAME', 'rosa')
+# --- DATABASE CONFIGURATION ---
+turso_url = os.environ.get('TURSO_DATABASE_URL')
+turso_token = os.environ.get('TURSO_AUTH_TOKEN')
 
-if db_host != 'localhost':
-    app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://{db_user}:{db_pass}@{db_host}/{db_name}'
-else:
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+if not turso_url:
+    raise ValueError("TURSO_DATABASE_URL environment variable is not set. Database connection is required.")
+
+if turso_url.startswith("libsql://"):
+    turso_url = turso_url.replace("libsql://", "sqlite+libsql://")
+
+app.config['SQLALCHEMY_DATABASE_URI'] = f"{turso_url}?secure=true"
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    "connect_args": {"auth_token": turso_token}
+}
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
+with app.app_context():
+    db.create_all()
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>

@@ -2,6 +2,6 @@ Flask
 Flask-SQLAlchemy
 textblob
 spacy
-pymysql
 python-dotenv
 gunicorn
+sqlalchemy-libsql
