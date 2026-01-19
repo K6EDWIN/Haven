@@ -1,7 +1,16 @@
 from flask import Flask, request, jsonify, render_template_string
 import os
 import sys
-from app_logic import analyze_sentiment, check_in_initial, extract_entities, get_resources, check_in, schedule_appointment
+
+from app_logic import (
+    analyze_sentiment, 
+    check_in_initial, 
+    extract_entities, 
+    get_resources, 
+    check_in, 
+    schedule_appointment,
+    get_safe_space_response
+)
 from models import db, Interaction
 
 app = Flask(__name__)
@@ -223,8 +232,6 @@ HTML_TEMPLATE = """
 def home():
     return render_template_string(HTML_TEMPLATE)
 
-# --- API Endpoints ---
-
 @app.route('/api/resources')
 def resources():
     return jsonify(get_resources())
@@ -233,7 +240,7 @@ def resources():
 def chat_mode():
     data = request.json
     msg = data.get('message', '')
-    response = check_in_initial(msg)
+    response = get_safe_space_response(msg)
     return jsonify({"response": response})
 
 @app.route('/api/extract', methods=['POST'])
@@ -270,5 +277,4 @@ def appointment_mode():
         return jsonify({"message": f"Error: {str(e)}"})
 
 if __name__ == '__main__':
-
     app.run(debug=True)
