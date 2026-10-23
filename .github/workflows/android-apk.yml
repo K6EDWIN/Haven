@@ -1,0 +1,64 @@
+name: Build Haven Android APK
+
+on:
+  push:
+    branches: [main, 'codex/**']
+    paths:
+      - 'mobile/**'
+      - 'app.py'
+      - 'app_logic.py'
+      - '.github/workflows/android-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      VITE_API_BASE_URL: ${{ secrets.HAVEN_API_BASE_URL }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Python for launch artwork
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install launch artwork dependency
+        run: python -m pip install Pillow
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install app dependencies
+        run: npm ci
+      - name: Build mobile interface
+        run: npm run build
+      - name: Generate Android project
+        run: npx cap add android
+      - name: Sync Android project
+        run: npx cap sync android
+      - name: Apply Haven launch artwork
+        run: python scripts/generate_splash.py
+      - name: Build debug APK
+        working-directory: mobile/android
+        run: ./gradlew assembleDebug
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: haven-android-debug-apk
+          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
