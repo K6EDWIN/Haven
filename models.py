@@ -107,3 +107,11 @@ class AdminAuditLog(db.Model):
     target_id = db.Column(db.String(36), nullable=True)
     outcome = db.Column(db.String(20), nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+
+class GoogleIdentity(db.Model):
+    __tablename__ = 'google_identities'
+    id = db.Column(db.Integer, primary_key=True)
+    subject = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    user_id = db.Column(db.String(36), db.ForeignKey('haven_users.id'), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)

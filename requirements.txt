@@ -4,5 +4,7 @@ textblob
 python-dotenv
 gunicorn
 sqlalchemy-libsql
+psycopg[binary]>=3.2,<4
+google-auth>=2.35,<3
 spacy
 https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1.tar.gz
