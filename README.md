@@ -24,7 +24,7 @@ Haven was built on the belief that everyone deserves a non-judgmental space to t
 * **Language:** Python 3.x
 * **Frameworks:** Flask, Flask-SQLAlchemy
 * **NLP Engines:** TextBlob, spaCy (`en_core_web_sm`)
-* **Database:** SQLite locally, or Turso/libSQL when configured with `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`
+* **Database:** SQLite locally, Neon/PostgreSQL with `DATABASE_URL`, or legacy Turso/libSQL with `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`
 * **Interfaces:** Flask routes, a command-line interface, and the Android app
 
 ## Android app
@@ -49,4 +49,8 @@ Register at `POST /api/auth/register` or sign in at `POST /api/auth/login` with 
 
 Safe Space chat requests remain transient. `POST /api/conversations` persists messages only after an explicit save action; every list, read and delete query is scoped to the authenticated owner. Diary endpoints (`GET/POST /api/diary`, `PATCH/DELETE /api/diary/:id`) enforce the same ownership rule. Existing anonymous check-in records created before account support remain in the legacy `chatbot_interactions` table; new check-ins and appointment requests bind to the authenticated account instead of trusting a client-supplied user ID. New tables are created by SQLAlchemy at app startup; existing deployments should take a database backup before rollout.
 
-For local web development, set `NEXT_PUBLIC_HAVEN_API_URL` in `web/.env.local` and add that exact origin to `HAVEN_ALLOWED_ORIGINS` on Flask. Then install dependencies and run the Next.js development script from `web/`. Configure `HAVEN_API_BASE_URL` in the Android Actions repository secrets for APK builds. This repo does not include deployment credentials, a PostgreSQL service, a separate custom model, or WebAuthn/biometric enrollment; configure infrastructure and secrets in the deployment environment before release. The current six-digit mobile lock is a client-side device convenience layered on account authentication, not a substitute for device security.
+For local web development, set `NEXT_PUBLIC_HAVEN_API_URL` in `web/.env.local` and add that exact origin to `HAVEN_ALLOWED_ORIGINS` on Flask. Then install dependencies and run the Next.js development script from `web/`. Configure `HAVEN_API_BASE_URL` in the Android Actions repository secrets for APK builds. A Neon project and production secrets still need to be created in their respective dashboards. The repository does not include a separate custom model or WebAuthn/biometric enrollment; the six-digit mobile lock uses account-backed PIN verification and a client-side inactivity gate.
+
+## Vercel, Neon, and Google sign-in
+
+Deployment setup for the Next.js site and Flask API as separate Vercel projects, Neon PostgreSQL connection, Google Cloud OAuth client, and required environment variables is documented in [DEPLOYMENT.md](DEPLOYMENT.md). Google ID tokens are verified by Flask before Haven issues an account session.

@@ -20,18 +20,34 @@ from app_logic import (
     get_safe_space_response
 )
 from models import (db, Interaction, ApiRequestMetric, HavenUser, UserSession,
-                    SavedConversation, SavedMessage, DiaryEntry, AdminAuditLog)
+                    SavedConversation, SavedMessage, DiaryEntry, AdminAuditLog, GoogleIdentity)
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024
 _auth_failures = {}
 _pin_failures = {}
+_admin_bootstrap_checked = False
 
 # --- DATABASE CONFIGURATION ---
+database_url = os.environ.get('DATABASE_URL')
 turso_url = os.environ.get('TURSO_DATABASE_URL')
 turso_token = os.environ.get('TURSO_AUTH_TOKEN')
 
-if not turso_url:
+if database_url:
+    if database_url.startswith('postgres://'):
+        database_url = database_url.replace('postgres://', 'postgresql+psycopg://', 1)
+    elif database_url.startswith('postgresql://'):
+        database_url = database_url.replace('postgresql://', 'postgresql+psycopg://', 1)
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'pool_pre_ping': True,
+        'pool_recycle': 240,
+        'pool_size': 1,
+        'max_overflow': 0,
+    }
+elif not turso_url:
+    if os.environ.get('VERCEL') == '1' or os.environ.get('FLASK_ENV') == 'production':
+        raise RuntimeError('Set DATABASE_URL to a production PostgreSQL connection string (Neon is supported).')
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///local.db'
 else:
     if turso_url.startswith("libsql://"):
@@ -360,6 +376,27 @@ def hash_secret(value, salt=None):
     return f'{salt}${digest}'
 
 
+@app.before_request
+def bootstrap_first_admin():
+    global _admin_bootstrap_checked
+    if _admin_bootstrap_checked:
+        return
+    email = os.environ.get('HAVEN_ADMIN_EMAIL', '').strip().lower()
+    password = os.environ.get('HAVEN_ADMIN_PASSWORD', '')
+    if not email or len(password) < 12:
+        _admin_bootstrap_checked = True
+        return
+    try:
+        if HavenUser.query.filter_by(role='admin').count() == 0 and not HavenUser.query.filter_by(email=email).first():
+            db.session.add(HavenUser(id=str(uuid.uuid4()), email=email,
+                                     password_hash=hash_secret(password), role='admin'))
+            db.session.commit()
+        _admin_bootstrap_checked = True
+    except Exception:
+        db.session.rollback()
+        app.logger.warning('Could not bootstrap the initial administrator account')
+
+
 def verify_secret(value, encoded):
     try:
         salt, expected = encoded.split('$', 1)
@@ -394,6 +431,30 @@ def current_user():
         return None
     user = db.session.get(HavenUser, session.user_id)
     return user if user and user.status == 'active' else None
+
+
+def issue_session(user):
+    raw_token = secrets.token_urlsafe(48)
+    db.session.add(UserSession(id=str(uuid.uuid4()), user_id=user.id,
+        token_hash=hashlib.sha256(raw_token.encode()).hexdigest(),
+        expires_at=datetime.utcnow() + timedelta(days=30)))
+    return raw_token
+
+
+def verify_google_credential(credential):
+    client_id = os.environ.get('GOOGLE_CLIENT_ID', '').strip()
+    if not client_id:
+        raise RuntimeError('Google sign-in is not configured')
+    if not isinstance(credential, str) or not credential or len(credential) > 12000:
+        raise ValueError('Invalid Google credential')
+    from google.oauth2 import id_token
+    from google.auth.transport import requests as google_requests
+    claims = id_token.verify_oauth2_token(credential, google_requests.Request(), client_id)
+    if claims.get('iss') not in ('accounts.google.com', 'https://accounts.google.com'):
+        raise ValueError('Invalid Google credential issuer')
+    if not claims.get('sub') or not claims.get('email') or claims.get('email_verified') is not True:
+        raise ValueError('Google must provide a verified email address')
+    return claims
 
 
 def require_user(view):
@@ -473,6 +534,59 @@ def login():
         expires_at=datetime.utcnow() + timedelta(days=30)))
     db.session.commit()
     return jsonify({'token': raw_token, 'user': {'id': user.id, 'email': user.email, 'role': user.role}})
+
+
+@app.route('/api/auth/google', methods=['POST'])
+def google_login():
+    data = request.get_json(silent=True) or {}
+    try:
+        claims = verify_google_credential(data.get('credential'))
+    except RuntimeError as exc:
+        return jsonify({'error': str(exc)}), 503
+    except Exception:
+        return jsonify({'error': 'Could not verify your Google sign-in. Please try again.'}), 401
+
+    identity = GoogleIdentity.query.filter_by(subject=claims['sub']).first()
+    if identity:
+        user = db.session.get(HavenUser, identity.user_id)
+        if not user or user.status != 'active':
+            return jsonify({'error': 'This Haven account is not active'}), 403
+    else:
+        email = claims['email'].strip().lower()
+        user = HavenUser.query.filter_by(email=email).first()
+        # Require an authenticated password session to link an existing account.
+        if user:
+            return jsonify({'error': 'This email already has a Haven account. Sign in with your password, then link Google from account settings.'}), 409
+        user = HavenUser(id=str(uuid.uuid4()), email=email,
+                         password_hash=hash_secret(secrets.token_urlsafe(48)))
+        db.session.add(user)
+        db.session.flush()
+        db.session.add(GoogleIdentity(subject=claims['sub'], user_id=user.id))
+
+    raw_token = issue_session(user)
+    db.session.commit()
+    return jsonify({'token': raw_token, 'user': {'id': user.id, 'email': user.email, 'role': user.role}})
+
+
+@app.route('/api/auth/google/link', methods=['POST'])
+@require_user
+def google_link():
+    data = request.get_json(silent=True) or {}
+    try:
+        claims = verify_google_credential(data.get('credential'))
+    except RuntimeError as exc:
+        return jsonify({'error': str(exc)}), 503
+    except Exception:
+        return jsonify({'error': 'Could not verify your Google sign-in. Please try again.'}), 401
+    if claims['email'].strip().lower() != g.haven_user.email.lower():
+        return jsonify({'error': 'The verified Google email must match your Haven account email'}), 409
+    existing = GoogleIdentity.query.filter_by(subject=claims['sub']).first()
+    if existing and existing.user_id != g.haven_user.id:
+        return jsonify({'error': 'That Google account is already connected to another Haven account'}), 409
+    if not existing:
+        db.session.add(GoogleIdentity(subject=claims['sub'], user_id=g.haven_user.id))
+        db.session.commit()
+    return jsonify({'ok': True})
 
 
 @app.route('/api/auth/me')
