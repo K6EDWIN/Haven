@@ -1,1 +1,12 @@
 .env
+__pycache__/
+*.py[cod]
+mobile/node_modules/
+mobile/dist/
+mobile/android/
+mobile/.env
+mobile/*.tsbuildinfo
+web/node_modules/
+web/.next/
+web/.env.local
+.gradle/

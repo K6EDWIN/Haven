@@ -88,7 +88,7 @@ def check_in(user_id, message):
     db.session.add(interaction)
     db.session.commit()
 
-    log_event(user_id, f"User interaction saved. Sentiment: {sentiment}")
+    log_event("system", "checkin_saved")
     return final_response
 
 
@@ -111,8 +111,8 @@ def schedule_appointment(user_id, counselor_name, appointment_time):
     appointment = Appointment(user_id=user_id, counselor_name=counselor_name, appointment_time=appointment_time)
     db.session.add(appointment)
     db.session.commit()
-    log_event(user_id, f"Appointment scheduled with {counselor_name} at {appointment_time}")
-    return f"Done. You are booked with {counselor_name} for {appointment_time}. I've sent a request to their calendar."
+    log_event("system", "appointment_request_saved")
+    return f"Your requested time with {counselor_name} was saved in Haven for {appointment_time}. This does not contact the counselor or confirm an appointment."
 
 def extract_entities(user_input):
     doc = nlp(user_input)
