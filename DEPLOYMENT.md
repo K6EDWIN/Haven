@@ -49,6 +49,8 @@ NEXT_PUBLIC_GOOGLE_CLIENT_ID=…apps.googleusercontent.com
 
 Use the same Google **web** client ID in both projects. `HAVEN_ALLOWED_ORIGINS` must contain exact site origins, including `https://`; it is not a URL path. If you use a custom domain, add that origin to both Vercel's project domain settings and this API variable.
 
+If the Google client ID is already saved in Vercel as `CLIENT_ID`, Haven accepts that name for Google sign-in. The preferred explicit names are `GOOGLE_CLIENT_ID` on the API project and `NEXT_PUBLIC_GOOGLE_CLIENT_ID` on the web project. `CLIENT_KEY` (a client secret) is not used by Haven's Google Identity Services flow. The web project also needs `NEXT_PUBLIC_HAVEN_API_URL`; Google credentials alone do not connect the site to the Flask API.
+
 ## Local development
 
 Copy `web/.env.example` to `web/.env.local`, fill in the API URL and public Google client ID, then run the web project from `web/`. For local API development, set `DATABASE_URL` to a development Neon branch or leave it unset to use local SQLite, and set `GOOGLE_CLIENT_ID` plus `HAVEN_ALLOWED_ORIGINS=http://localhost:3000`.

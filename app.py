@@ -442,7 +442,9 @@ def issue_session(user):
 
 
 def verify_google_credential(credential):
-    client_id = os.environ.get('GOOGLE_CLIENT_ID', '').strip()
+    # CLIENT_ID supports the existing Vercel environment variable name; prefer
+    # the explicit name documented for Haven's API project.
+    client_id = (os.environ.get('GOOGLE_CLIENT_ID') or os.environ.get('CLIENT_ID') or '').strip()
     if not client_id:
         raise RuntimeError('Google sign-in is not configured')
     if not isinstance(credential, str) or not credential or len(credential) > 12000:
